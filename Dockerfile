@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir pymssql
 ENV PYTHONUNBUFFERED=1
 
 # Run the Python script
-CMD ["python", "migrate_uuid4_uuid7.py"]
+CMD ["python", "app.py"]
