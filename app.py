@@ -15,7 +15,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('migrations.log')
+        logging.FileHandler('commands.log')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class ExecutedCommand:
     error: Optional[str] = None
     timestamp: datetime = datetime.now()
 
-class MigrationManager:
+class CommandManager:
     def __init__(self):
         self.executed_commands: List[ExecutedCommand] = []
         self.lock = Lock()
@@ -112,7 +112,7 @@ class MigrationManager:
     def execute_sql_commands(self, sql_commands: List[str]) -> Dict:
         """Execute a list of SQL commands and return execution details."""
         start_time = datetime.now()
-        logger.info(f"Starting migration at {start_time}")
+        logger.info(f"Starting commands at {start_time}")
         
         success_count = 0
         error_count = 0
@@ -185,13 +185,13 @@ class MigrationManager:
                 for cmd in self.executed_commands
             ]
 
-# Initialize Flask app and migration manager
+# Initialize Flask app and command manager
 app = Flask(__name__)
-migration_manager = MigrationManager()
+command_manager = CommandManager()
 
-@app.route('/migrate', methods=['POST'])
-def migrate():
-    """Endpoint to start a new migration."""
+@app.route('/command', methods=['POST'])
+def command():
+    """Endpoint to start a new command."""
     try:
         data = request.get_json()
         if not data or 'sql_commands' not in data:
@@ -206,27 +206,27 @@ def migrate():
                 "message": "'sql_commands' must be a list"
             }), 400
 
-        def run_migration():
+        def run_command():
             try:
-                result = migration_manager.execute_sql_commands(data['sql_commands'])
+                result = command_manager.execute_sql_commands(data['sql_commands'])
                 logger.info(
-                    "Migration completed. Successful: %d, Failed: %d", 
+                    "Command completed. Successful: %d, Failed: %d", 
                     result.get('success_count', 0),
                     result.get('error_count', 0)
                 )
             except Exception as e:
-                logger.error("Migration failed: %s", str(e), exc_info=True)
+                logger.error("Command failed: %s", str(e), exc_info=True)
 
-        migration_thread = Thread(target=run_migration)
-        migration_thread.start()
+        command_thread = Thread(target=run_command)
+        command_thread.start()
 
         return jsonify({
             "status": "in_progress",
-            "message": "Migration started successfully"
+            "message": "Command started successfully"
         }), 202
 
     except Exception as e:
-        logger.error("Error processing migration request", exc_info=True)
+        logger.error("Error processing command request", exc_info=True)
         return jsonify({
             "status": "error",
             "message": f"Internal server error: {str(e)}"
@@ -234,19 +234,19 @@ def migrate():
 
 @app.route('/clear', methods=['DELETE'])
 def clear_executed_commands():
-    """Clear the migration history."""
-    migration_manager.clear_history()
+    """Clear the command history."""
+    command_manager.clear_history()
     return jsonify({
         "status": "success",
-        "message": "Migration history cleared"
+        "message": "Command history cleared"
     }), 200
 
 @app.route('/', methods=['GET'])
 def health_check():
-    """Health check endpoint that returns migration history."""
+    """Health check endpoint that returns command history."""
     return jsonify({
         "status": "healthy",
-        "migration_history": migration_manager.get_history()
+        "command_history": command_manager.get_history()
     }), 200
 
 if __name__ == "__main__":
