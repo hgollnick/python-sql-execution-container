@@ -30,4 +30,9 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/psec:${{ github.event.inputs.version }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/psec:${{ github.event.inputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/psec:latest
+          labels: |
+            org.opencontainers.image.title=Flask SQL Command Executor
+            org.opencontainers.image.description=Database-agnostic Flask REST API for executing SQL commands with async support, command history, and Docker Compose integration.
