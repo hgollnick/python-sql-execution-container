@@ -142,9 +142,33 @@ class Application:
 
         @self.app.route('/', methods=['GET'])
         def health_check():
+            # Pagination parameters
+            try:
+                page = int(request.args.get('page', 1))
+                page_size = int(request.args.get('page_size', 20))
+                if page < 1 or page_size < 1:
+                    raise ValueError
+            except Exception:
+                return jsonify({
+                    "status": "error",
+                    "message": "Invalid pagination parameters. 'page' and 'page_size' must be positive integers."
+                }), 400
+
+            history = self.history_manager.get()
+            total = len(history)
+            start = (page - 1) * page_size
+            end = start + page_size
+            paginated_history = history[start:end]
+
             return jsonify({
-                "command_history": self.history_manager.get(),
-                "running_commands": self.history_manager.get_running()
+                "command_history": paginated_history,
+                "running_commands": self.history_manager.get_running(),
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": (total + page_size - 1) // page_size
+                }
             }), 200
 
     def run(self):
