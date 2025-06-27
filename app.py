@@ -7,6 +7,7 @@ from core.config import DatabaseConfig
 from core.db import DatabaseConnectionManager
 from core.executor import SQLCommandExecutor
 from core.history import CommandHistoryManager
+from flasgger import Swagger
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 class Application:
     def __init__(self):
         self.app = Flask(__name__)
+        self.swagger = Swagger(self.app)
         self.jobs = {}  # job_id -> {status, result}
         self.jobs_lock = Lock()
         try:
@@ -37,6 +39,39 @@ class Application:
     def _register_routes(self):
         @self.app.route('/command', methods=['POST'])
         def command():
+            """
+            Submit SQL commands for asynchronous execution
+            ---
+            tags:
+              - Commands
+            parameters:
+              - in: body
+                name: body
+                required: true
+                schema:
+                  type: object
+                  properties:
+                    sql_commands:
+                      type: array
+                      items:
+                        type: string
+            responses:
+              202:
+                description: Command started successfully
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    job_id:
+                      type: string
+                    message:
+                      type: string
+              400:
+                description: Bad request
+              500:
+                description: Internal server error
+            """
             try:
                 data = request.get_json()
                 if not data or 'sql_commands' not in data:
@@ -89,6 +124,41 @@ class Application:
 
         @self.app.route('/command_sync', methods=['POST'])
         def command_sync():
+            """
+            Submit SQL commands for synchronous execution
+            ---
+            tags:
+              - Commands
+            parameters:
+              - in: body
+                name: body
+                required: true
+                schema:
+                  type: object
+                  properties:
+                    sql_commands:
+                      type: array
+                      items:
+                        type: string
+            responses:
+              200:
+                description: Command executed successfully
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    job_id:
+                      type: string
+                    results:
+                      type: array
+                      items:
+                        type: object
+              400:
+                description: Bad request
+              500:
+                description: Internal server error
+            """
             try:
                 data = request.get_json()
                 if not data or 'sql_commands' not in data:
@@ -120,6 +190,30 @@ class Application:
 
         @self.app.route('/job/<job_id>', methods=['GET'])
         def get_job_status(job_id):
+            """
+            Get the status and result of a submitted job
+            ---
+            tags:
+              - Jobs
+            parameters:
+              - in: path
+                name: job_id
+                type: string
+                required: true
+                description: The job ID
+            responses:
+              200:
+                description: Job status and result
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    result:
+                      type: object
+              404:
+                description: Job not found
+            """
             with self.jobs_lock:
                 job = self.jobs.get(job_id)
             if not job:
@@ -140,6 +234,22 @@ class Application:
 
         @self.app.route('/clear', methods=['DELETE'])
         def clear_executed_commands():
+            """
+            Clear the command execution history
+            ---
+            tags:
+              - History
+            responses:
+              200:
+                description: Command history cleared
+                schema:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    message:
+                      type: string
+            """
             self.history_manager.clear()
             return jsonify({
                 "status": "success",
@@ -148,7 +258,50 @@ class Application:
 
         @self.app.route('/', methods=['GET'])
         def health_check():
-            # Pagination parameters
+            """
+            Get command history and running commands (with pagination)
+            ---
+            tags:
+              - History
+            parameters:
+              - in: query
+                name: page
+                type: integer
+                required: false
+                default: 1
+              - in: query
+                name: page_size
+                type: integer
+                required: false
+                default: 20
+            responses:
+              200:
+                description: Command history and running commands
+                schema:
+                  type: object
+                  properties:
+                    command_history:
+                      type: array
+                      items:
+                        type: object
+                    running_commands:
+                      type: array
+                      items:
+                        type: string
+                    pagination:
+                      type: object
+                      properties:
+                        page:
+                          type: integer
+                        page_size:
+                          type: integer
+                        total:
+                          type: integer
+                        total_pages:
+                          type: integer
+              400:
+                description: Invalid pagination parameters
+            """
             try:
                 page = int(request.args.get('page', 1))
                 page_size = int(request.args.get('page_size', 20))
