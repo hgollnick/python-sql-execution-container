@@ -1,7 +1,8 @@
 import os
 import logging
 from flask import Flask, jsonify, request
-from threading import Thread
+from threading import Thread, Lock
+import uuid
 from core.config import DatabaseConfig
 from core.db import DatabaseConnectionManager
 from core.executor import SQLCommandExecutor
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 class Application:
     def __init__(self):
         self.app = Flask(__name__)
+        self.jobs = {}  # job_id -> {status, result}
+        self.jobs_lock = Lock()
         try:
             self.db_config = DatabaseConfig.from_env()
             self.db_manager = DatabaseConnectionManager(self.db_config)
@@ -47,27 +50,34 @@ class Application:
                         "message": "'sql_commands' must be a list"
                     }), 400
 
-                # Track each command as running
+                job_id = str(uuid.uuid4())
+                with self.jobs_lock:
+                    self.jobs[job_id] = {"status": "in_progress", "result": None}
+
                 running_entries = [self.history_manager.add_running(cmd) for cmd in data['sql_commands']]
 
                 def run_commands():
                     try:
                         results = self.command_executor.execute(data['sql_commands'])
                         self.history_manager.add(results)
-                        # Remove from running when done
                         for cmd in data['sql_commands']:
                             self.history_manager.finish_running(cmd)
                         success_count = sum(1 for r in results if r.status == "success")
                         error_count = sum(1 for r in results if r.status == "error")
                         logger.info(f"Command completed. Successful: {success_count}, Failed: {error_count}")
+                        with self.jobs_lock:
+                            self.jobs[job_id] = {"status": "completed", "result": [r.__dict__ for r in results]}
                     except Exception as e:
                         logger.error(f"Command failed: {str(e)}", exc_info=True)
                         for cmd in data['sql_commands']:
                             self.history_manager.finish_running(cmd)
+                        with self.jobs_lock:
+                            self.jobs[job_id] = {"status": "error", "result": str(e)}
 
                 Thread(target=run_commands).start()
                 return jsonify({
                     "status": "in_progress",
+                    "job_id": job_id,
                     "message": "Command started successfully"
                 }), 202
             except Exception as e:
@@ -92,10 +102,13 @@ class Application:
                         "message": "'sql_commands' must be a list"
                     }), 400
 
-                # Synchronously execute and return results (including rows for SELECT)
+                job_id = str(uuid.uuid4())
                 results = self.command_executor.execute_with_results(data['sql_commands'])
+                with self.jobs_lock:
+                    self.jobs[job_id] = {"status": "completed", "result": results}
                 return jsonify({
                     "status": "completed",
+                    "job_id": job_id,
                     "results": results
                 }), 200
             except Exception as e:
@@ -104,6 +117,20 @@ class Application:
                     "status": "error",
                     "message": f"Internal server error: {str(e)}"
                 }), 500
+
+        @self.app.route('/job/<job_id>', methods=['GET'])
+        def get_job_status(job_id):
+            with self.jobs_lock:
+                job = self.jobs.get(job_id)
+            if not job:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Job ID {job_id} not found"
+                }), 404
+            return jsonify({
+                "status": job["status"],
+                "result": job["result"]
+            }), 200
 
         @self.app.route('/clear', methods=['DELETE'])
         def clear_executed_commands():
