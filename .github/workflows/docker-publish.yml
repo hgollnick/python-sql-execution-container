@@ -1,4 +1,4 @@
-name: Publish Docker image to Docker Hub
+name: Publish to Docker Hub
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: true
         default: 'latest'
 
-run-name: Publish Docker image ${{ github.event.inputs.version }} to Docker Hub
+run-name: Publish version ${{ github.event.inputs.version }} to Docker Hub
 
 jobs:
   build-and-push:
