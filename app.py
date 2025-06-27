@@ -77,6 +77,34 @@ class Application:
                     "message": f"Internal server error: {str(e)}"
                 }), 500
 
+        @self.app.route('/command_sync', methods=['POST'])
+        def command_sync():
+            try:
+                data = request.get_json()
+                if not data or 'sql_commands' not in data:
+                    return jsonify({
+                        "status": "error",
+                        "message": "Missing 'sql_commands' in request body"
+                    }), 400
+                if not isinstance(data['sql_commands'], list):
+                    return jsonify({
+                        "status": "error",
+                        "message": "'sql_commands' must be a list"
+                    }), 400
+
+                # Synchronously execute and return results (including rows for SELECT)
+                results = self.command_executor.execute_with_results(data['sql_commands'])
+                return jsonify({
+                    "status": "completed",
+                    "results": results
+                }), 200
+            except Exception as e:
+                logger.error("Error processing command_sync request", exc_info=True)
+                return jsonify({
+                    "status": "error",
+                    "message": f"Internal server error: {str(e)}"
+                }), 500
+
         @self.app.route('/clear', methods=['DELETE'])
         def clear_executed_commands():
             self.history_manager.clear()
