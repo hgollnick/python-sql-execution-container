@@ -31,7 +31,7 @@ class SQLCommandExecutor:
                 except Exception as e:
                     duration = time.time() - start
                     error_msg = f"Error executing command: {str(e)}"
-                    logger.error(error_msg)
+                    logger.error(f"Failed SQL: {command.strip()} | Exception: {str(e)}", exc_info=True)
                     results.append(ExecutedCommand(
                         command=command.strip(),
                         duration=duration,
@@ -72,7 +72,7 @@ class SQLCommandExecutor:
                 except Exception as e:
                     duration = time.time() - start
                     error_msg = f"Error executing command: {str(e)}"
-                    logger.error(error_msg)
+                    logger.error(f"Failed SQL: {command.strip()} | Exception: {str(e)}", exc_info=True)
                     results.append({
                         'command': command.strip(),
                         'duration': duration,

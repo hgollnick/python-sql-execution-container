@@ -127,6 +127,12 @@ class Application:
                     "status": "error",
                     "message": f"Job ID {job_id} not found"
                 }), 404
+            # If job failed, include error details in response
+            if job["status"] == "error":
+                return jsonify({
+                    "status": "error",
+                    "error": job["result"]
+                }), 200
             return jsonify({
                 "status": job["status"],
                 "result": job["result"]
