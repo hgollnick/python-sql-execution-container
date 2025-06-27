@@ -1,147 +1,117 @@
 # Flask SQL Command Executor
 
-This project is a Flask-based REST API that securely executes a list of SQL commands against a Microsoft SQL Server (`pymssql`) in a thread-safe manner. Each command execution is logged, and a history of commands can be retrieved or cleared.
+This project is a Flask-based REST API that securely executes a list of SQL commands against a database (PostgreSQL or Microsoft SQL Server) in a thread-safe manner. Each command execution is logged, and a history of commands can be retrieved or cleared. The app is database-agnostic and can be run easily with Docker Compose.
+
+**This application is intended for trusted environments only, especially for debugging purposes.**
 
 ## Features
 
-* ✅ Accepts a list of SQL commands via API
-* 🧵 Runs each command asynchronously in a separate thread
-* 🔐 Uses environment variables to configure DB access
-* 📜 Logs execution details and errors
-* 🧠 Stores a history of executed commands
-* 🛠️ Includes endpoints to check service health and clear command history
+* Accepts a list of SQL commands via API.
+* Runs each command asynchronously in a separate thread.
+* Tracks running commands and shows their elapsed time.
+* Uses environment variables to configure DB access.
+* Logs execution details and errors.
+* Stores a history of executed commands.
+* Includes endpoints to check service health and clear command history.
+
 
 ---
 
 ## Environment Variables
 
-Before running the application, ensure the following environment variables are set:
+Before running the application, ensure the following environment variables are set (see `docker-compose.yml` for examples):
 
 ```bash
-DB_SERVER=<your-sql-server-host>
-DB_DATABASE=<your-database-name>
-DB_USERNAME=<your-username>
-DB_PASSWORD=<your-password>
-FLASK_RUN_HOST=0.0.0.0        # Optional, default is 0.0.0.0
-FLASK_RUN_PORT=5000           # Optional, default is 80
+DB_TYPE=postgres                # 'postgres' or 'mssql'
+DB_SERVER=db                    # Database host (use 'db' for docker-compose)
+DB_DATABASE=testdb              # Database name
+DB_USERNAME=testuser            # Database user
+DB_PASSWORD=testpass            # Database password
+FLASK_RUN_HOST=0.0.0.0          # Optional, default is 0.0.0.0
+FLASK_RUN_PORT=80                # Optional, default is 80
 ```
 
 ---
 
-## Installation
+## Installation (Local)
 
 ### Requirements
 
 * Python 3.8+
+* `psycopg2-binary` (PostgreSQL client for Python)
 * `pymssql` (SQL Server client for Python)
 * `Flask`
 
 ### Install Dependencies
 
 ```bash
-pip install flask pymssql
+pip install -r requirements.txt
 ```
 
 ---
 
-## Running the Application
+## Running with Docker Compose
+
+The easiest way to run the app and a test Postgres database is with Docker Compose:
 
 ```bash
-python app.py
+cd example
+# Build and start the app and database
+docker-compose up --build
 ```
 
-The service will be available at `http://localhost:5000/` (or whichever port you configure).
+- The API will be available at [http://localhost:8080/](http://localhost:8080/)
+- The database will be seeded with test data available in ```example\init-db.sql```.
 
 ---
 
 ## API Endpoints
 
-### `POST /command`
+### Health Check
+```bash
+GET /
+```
+Returns the command history and currently running commands (with elapsed time).
 
-Executes a list of SQL commands asynchronously.
-
-**Request Body:**
-
-```json
+### Execute SQL Command(s)
+```bash
+POST /command
+Content-Type: application/json
 {
-  "sql_commands": [
-    "DELETE FROM users WHERE id = 123;",
-    "UPDATE logs SET deleted = 1 WHERE user_id = 123;"
-  ]
+  "sql_commands": ["SELECT * FROM users;"]
 }
 ```
+Returns immediately with status. Use `/` to check command history and running commands.
 
-**Response:**
+### Clear Command History
+```bash
+DELETE /clear
+```
+Clears all command history and running command tracking.
 
-```json
-{
-  "status": "in_progress",
-  "message": "Command started successfully"
-}
+---
+
+## Example SQL for Testing
+
+The included Postgres database is initialized with:
+- A `users` table and sample data
+- Views and functions for slow queries (10s and 60s delays)
+
+You can test slow queries with:
+```bash
+curl -X POST http://localhost:8080/command \
+  -H "Content-Type: application/json" \
+  -d '{"sql_commands": ["SELECT * FROM users_with_10s_delay;"]}'
 ```
 
-### `GET /`
-
-Health check + Command execution history.
-
-**Response:**
-
-```json
-{
-  "status": "healthy",
-  "command_history": [
-    {
-      "command": "DELETE FROM users WHERE id = 123;",
-      "duration": 0.04,
-      "status": "success",
-      "error": null,
-      "timestamp": "2025-06-19T13:00:00"
-    },
-    ...
-  ]
-}
-```
-
-### `DELETE /clear`
-
-Clears the stored command history.
-
-**Response:**
-
-```json
-{
-  "status": "success",
-  "message": "Command history cleared"
-}
+Or test error handling with:
+```bash
+curl -X POST http://localhost:8080/command \
+  -H "Content-Type: application/json" \
+  -d '{"sql_commands": ["SELECT * FROM does_not_exist;"]}'
 ```
 
 ---
 
-## Logs
-
-Command execution logs are stored in:
-
-* `commands.log` (file)
-* Console output
-
----
-
-## Thread Safety
-
-Command execution and history are protected by `threading.Lock()` to prevent race conditions.
-
----
-
-## Security Notes
-
-* Use only in trusted environments.
-* Consider authentication and authorization for production.
-* Commands are executed **as-is** — ensure validation/sanitization if exposed externally.
-
----
-
-## License
-
-MIT or your license of choice.
-
----
+## Notes
+- The app is database-agnostic: set `DB_TYPE=postgres` or `DB_TYPE=mssql` and provide the correct driver and connection info.
